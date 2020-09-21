@@ -4,6 +4,7 @@ use crate::cipherstring::CipherString;
 use anyhow::Context as _;
 use serde::Serialize;
 use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::path::Path;
 use std::str::FromStr;
 use url::Url;
 
@@ -60,6 +61,26 @@ impl Needle {
         }
 
         Needle::Name(arg.to_string())
+    }
+
+    pub fn split_folder(&self) -> anyhow::Result<(Option<String>, Self)> {
+        let name = match self {
+            Needle::Name(name) => name,
+            needle => return Ok((None, needle.clone())),
+        };
+        let path = Path::new(name);
+        let name = path.file_name()
+            .ok_or_else(|| anyhow::anyhow!("no name provided"))?;
+        let folder = match path.parent().unwrap() {
+            p if p == Path::new("") => None,
+            p if p == Path::new("/") => Some(Path::new("")),
+            p => Some(p),
+        };
+
+        let folder = folder.map(|f| f.to_str().unwrap().to_owned());
+        let name = name.to_str().unwrap().to_owned();
+
+        Ok((folder, Needle::Name(name)))
     }
 }
 
