@@ -2,6 +2,58 @@ use anyhow::Context as _;
 use std::io::Read as _;
 use std::os::unix::ffi::OsStringExt as _;
 
+impl rbw::cipher::Cipher for crate::sock::Sock {
+    fn decrypt(
+        &mut self,
+        cipherstring: &str,
+        org_id: Option<&str>,
+    ) -> anyhow::Result<String> {
+        self.send(&rbw::protocol::Request {
+            tty: ttyname(0)
+                .ok()
+                .and_then(|p| p.to_str().map(|s| s.to_string())),
+            action: rbw::protocol::Action::Decrypt {
+                cipherstring: cipherstring.to_string(),
+                org_id: org_id.map(std::string::ToString::to_string),
+            },
+        })?;
+
+        let res = self.recv()?;
+        match res {
+            rbw::protocol::Response::Decrypt { plaintext } => Ok(plaintext),
+            rbw::protocol::Response::Error { error } => {
+                Err(anyhow::anyhow!("failed to decrypt: {}", error))
+            }
+            _ => Err(anyhow::anyhow!("unexpected message: {:?}", res)),
+        }
+    }
+
+    fn encrypt(
+        &mut self,
+        plaintext: &str,
+        org_id: Option<&str>,
+    ) -> anyhow::Result<String> {
+        self.send(&rbw::protocol::Request {
+            tty: ttyname(0)
+                .ok()
+                .and_then(|p| p.to_str().map(|s| s.to_string())),
+            action: rbw::protocol::Action::Encrypt {
+                plaintext: plaintext.to_string(),
+                org_id: org_id.map(std::string::ToString::to_string),
+            },
+        })?;
+
+        let res = self.recv()?;
+        match res {
+            rbw::protocol::Response::Encrypt { cipherstring } => Ok(cipherstring),
+            rbw::protocol::Response::Error { error } => {
+                Err(anyhow::anyhow!("failed to encrypt: {}", error))
+            }
+            _ => Err(anyhow::anyhow!("unexpected message: {:?}", res)),
+        }
+    }
+}
+
 pub fn login() -> anyhow::Result<()> {
     simple_action(rbw::protocol::Action::Login)
 }
@@ -137,7 +189,7 @@ fn simple_action(action: rbw::protocol::Action) -> anyhow::Result<()> {
     }
 }
 
-fn connect() -> anyhow::Result<crate::sock::Sock> {
+pub fn connect() -> anyhow::Result<crate::sock::Sock> {
     crate::sock::Sock::connect().with_context(|| {
         let log = rbw::dirs::agent_stderr_file();
         format!(

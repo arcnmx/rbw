@@ -241,8 +241,10 @@ async fn login_success(
     match res {
         Ok((keys, org_keys)) => {
             let mut state = state.write().await;
-            state.priv_key = Some(keys);
-            state.org_keys = Some(org_keys);
+            state.state = Some(rbw::cipher::State {
+                priv_key: keys,
+                org_keys,
+            });
         }
         Err(e) => return Err(e).context("failed to unlock database"),
     }
@@ -341,8 +343,10 @@ async fn unlock_success(
     org_keys: std::collections::HashMap<String, rbw::locked::Keys>,
 ) -> anyhow::Result<()> {
     let mut state = state.write().await;
-    state.priv_key = Some(keys);
-    state.org_keys = Some(org_keys);
+    state.state = Some(rbw::cipher::State {
+        priv_key: keys,
+        org_keys,
+    });
     Ok(())
 }
 
