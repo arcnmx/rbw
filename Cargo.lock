@@ -1251,6 +1251,7 @@ dependencies = [
  "anyhow",
  "arrayvec",
  "async-trait",
+ "atty",
  "base32",
  "base64 0.12.3",
  "block-modes",

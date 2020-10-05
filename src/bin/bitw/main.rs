@@ -2,7 +2,7 @@
 
 use anyhow::Context as _;
 use rbw::cipher::*;
-use std::convert::{TryFrom, TryInto};
+use std::convert::{TryFrom, TryInto, Infallible};
 use std::path::{Path, PathBuf};
 use std::ffi::OsString;
 use std::io::{self, Write as _};
@@ -243,11 +243,35 @@ impl FromStr for Setting {
     }
 }
 
+#[derive(Debug)]
+pub enum Field {
+    Password,
+    Username,
+    Notes,
+    Custom(String),
+}
+
+impl FromStr for Field {
+    type Err = Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "password" => Field::Password,
+            "username" | "login" => Field::Username,
+            "notes" => Field::Notes,
+            other => Field::Custom(other.into()),
+        })
+    }
+}
+
 #[derive(Debug, structopt::StructOpt)]
 #[structopt(about = "Unofficial Bitwarden CLI")]
 enum Command {
+    #[structopt(alias = "show")]
     Get {
         query: Query,
+        #[structopt(long, short)]
+        field: Option<Field>,
     },
     #[structopt(alias = "ls")]
     List {
@@ -298,7 +322,42 @@ fn find_by_entry<'db, C: Cipher>(mut crypt: C, db: &'db rbw::db::Db, query: &Que
     res.map(|()| None)
 }
 
-fn output_entry(opt: &Opt, entry: &DecryptedCipher) -> anyhow::Result<()> {
+fn output_entry(opt: &Opt, entry: &DecryptedCipher, field_query: &Option<Field>) -> anyhow::Result<()> {
+    if let Some(field_query) = field_query {
+        match opt.format {
+            OutputFormat::Json => // not sure how to handle this?
+                unimplemented!("requested json output for a single field?"),
+            _ => (),
+        }
+
+        let output = match field_query {
+            Field::Username => match &entry.data {
+                DecryptedData::Login { username, .. } => username.as_ref(),
+                _ => None,
+            },
+            Field::Password => match &entry.data {
+                DecryptedData::Login { password, .. } => password.as_ref(),
+                _ => None,
+            },
+            Field::Notes =>
+                entry.notes.as_ref(),
+            Field::Custom(name) =>
+                entry.fields.iter().find(|f| f.name.as_ref() == Some(name)).and_then(|f| f.value.as_ref()),
+        };
+
+        let output = output
+            .ok_or_else(|| anyhow::anyhow!("Field {:?} not found on entry {}", field_query, entry.name))?;
+
+        print!("{}", output);
+
+        if atty::is(atty::Stream::Stdout) {
+            // Avoid writing a trailing newline otherwise
+            println!();
+        }
+
+        return Ok(())
+    }
+
     match opt.format {
         OutputFormat::Debug =>
             println!("{:#?}", entry),
@@ -473,13 +532,13 @@ async fn main_result(opt: &Opt) -> anyhow::Result<()> {
                 println!("{}{}", prefix, entry.name);
             }
         },
-        Command::Get { query } => {
+        Command::Get { query, field } => {
             let db = load_db()?;
             let crypt: rbw::cipher::State = unlock(opt, &db).await?;
 
             let (_, entry) = find_by_entry(crypt, &db, query)?
                 .ok_or_else(|| anyhow::anyhow!("no entry found"))?;
-            output_entry(&opt, &entry)?;
+            output_entry(&opt, &entry, field)?;
         },
         Command::Login => {
             let mut db = load_db()
