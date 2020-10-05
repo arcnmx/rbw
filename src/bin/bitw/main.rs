@@ -171,6 +171,9 @@ impl TryFrom<&'_ Password> for rbw::locked::Password {
                 }).try_into()
             },
             Password::Stdin => {
+                if atty::is(atty::Stream::Stdin) {
+                    eprint!("Master password: ");
+                }
                 let stdin = io::stdin();
                 let stdin = stdin.lock();
                 Ok(Password::password_from_read(stdin)?)
