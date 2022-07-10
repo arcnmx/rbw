@@ -92,7 +92,7 @@ impl CipherString {
         let cipher = block_modes::Cbc::<
             aes::Aes256,
             block_modes::block_padding::Pkcs7,
-        >::new_var(keys.enc_key(), &iv)
+        >::new_from_slices(keys.enc_key(), &iv)
         .context(crate::error::CreateBlockMode)?;
         let ciphertext = cipher.encrypt_vec(plaintext);
 
@@ -233,7 +233,7 @@ fn decrypt_common_symmetric(
     Ok(block_modes::Cbc::<
             aes::Aes256,
             block_modes::block_padding::Pkcs7,
-        >::new_var(keys.enc_key(), iv)
+        >::new_from_slices(keys.enc_key(), iv)
         .context(crate::error::CreateBlockMode)?)
 }
 

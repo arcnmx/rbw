@@ -12,13 +12,13 @@ categories = ["command-line-utilities", "cryptography"]
 license = "MIT"
 
 [dependencies]
-aes = "0.6"
+aes = "0.7"
 anyhow = "1.0"
 arrayvec = "0.5"
 async-trait = "0.1"
 base32 = "0.4"
 base64 = "0.12"
-block-modes = "0.7"
+block-modes = "0.8"
 chbs = "0.0.10"
 daemonize = "0.4"
 directories = "3.0"
