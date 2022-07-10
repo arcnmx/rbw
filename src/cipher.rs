@@ -463,21 +463,19 @@ impl std::convert::TryFrom<&String> for ListField {
 }
 
 pub fn generate_totp(secret: &str) -> anyhow::Result<String> {
-    Ok(format!(
-        "{}",
-        oath::totp_raw_now(
-            &base32::decode(
-                base32::Alphabet::RFC4648 { padding: false },
-                secret
-            )
-            .ok_or_else(|| anyhow::anyhow!(
-                "totp secret was not valid base32"
-            ))?,
-            6,
-            0,
-            30,
-            &oath::HashType::SHA1,
+    Ok(totp_lite::totp_custom::<totp_lite::Sha1>(
+        totp_lite::DEFAULT_STEP,
+        6,
+        &base32::decode(
+            base32::Alphabet::RFC4648 { padding: false },
+            secret
         )
+        .ok_or_else(|| anyhow::anyhow!(
+            "totp secret was not valid base32"
+        ))?,
+        std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)?
+            .as_secs(),
     ))
 }
 
