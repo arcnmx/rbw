@@ -4,9 +4,7 @@ use futures_util::StreamExt as _;
 use crate::notifications;
 
 pub struct State {
-    pub priv_key: Option<rbw::locked::Keys>,
-    pub org_keys:
-        Option<std::collections::HashMap<String, rbw::locked::Keys>>,
+    pub state: rbw::cipher::State,
     pub timeout: crate::timeout::Timeout,
     pub timeout_duration: std::time::Duration,
     pub sync_timeout: crate::timeout::Timeout,
@@ -16,23 +14,12 @@ pub struct State {
 }
 
 impl State {
-    pub fn key(&self, org_id: Option<&str>) -> Option<&rbw::locked::Keys> {
-        org_id.map_or(self.priv_key.as_ref(), |id| {
-            self.org_keys.as_ref().and_then(|h| h.get(id))
-        })
-    }
-
-    pub fn needs_unlock(&self) -> bool {
-        self.priv_key.is_none() || self.org_keys.is_none()
-    }
-
     pub fn set_timeout(&self) {
         self.timeout.set(self.timeout_duration);
     }
 
     pub fn clear(&mut self) {
-        self.priv_key = None;
-        self.org_keys = None;
+        self.state = Default::default();
         self.timeout.clear();
     }
 
@@ -84,8 +71,7 @@ impl Agent {
             timer_r,
             sync_timer_r,
             state: std::sync::Arc::new(tokio::sync::Mutex::new(State {
-                priv_key: None,
-                org_keys: None,
+                state: Default::default(),
                 timeout,
                 timeout_duration,
                 sync_timeout,

@@ -351,8 +351,10 @@ async fn login_success(
     match res {
         Ok((keys, org_keys)) => {
             let mut state = state.lock().await;
-            state.priv_key = Some(keys);
-            state.org_keys = Some(org_keys);
+            state.state = rbw::cipher::State {
+                priv_key: Some(keys),
+                org_keys: Some(org_keys),
+            };
         }
         Err(e) => return Err(e).context("failed to unlock database"),
     }
@@ -365,7 +367,7 @@ pub async fn unlock(
     state: std::sync::Arc<tokio::sync::Mutex<crate::agent::State>>,
     tty: Option<&str>,
 ) -> anyhow::Result<()> {
-    if state.lock().await.needs_unlock() {
+    if state.lock().await.state.needs_unlock() {
         let db = load_db().await?;
 
         let Some(kdf) = db.kdf else {
@@ -457,8 +459,10 @@ async fn unlock_success(
     org_keys: std::collections::HashMap<String, rbw::locked::Keys>,
 ) -> anyhow::Result<()> {
     let mut state = state.lock().await;
-    state.priv_key = Some(keys);
-    state.org_keys = Some(org_keys);
+    state.state = rbw::cipher::State {
+        priv_key: Some(keys),
+        org_keys: Some(org_keys),
+    };
     Ok(())
 }
 
@@ -477,7 +481,7 @@ pub async fn check_lock(
     sock: &mut crate::sock::Sock,
     state: std::sync::Arc<tokio::sync::Mutex<crate::agent::State>>,
 ) -> anyhow::Result<()> {
-    if state.lock().await.needs_unlock() {
+    if state.lock().await.state.needs_unlock() {
         return Err(anyhow::anyhow!("agent is locked"));
     }
 
@@ -536,7 +540,7 @@ pub async fn decrypt(
     org_id: Option<&str>,
 ) -> anyhow::Result<()> {
     let state = state.lock().await;
-    let Some(keys) = state.key(org_id) else {
+    let Some(keys) = state.state.key(org_id) else {
         return Err(anyhow::anyhow!(
             "failed to find decryption keys in in-memory state"
         ));
@@ -574,7 +578,7 @@ pub async fn encrypt(
     org_id: Option<&str>,
 ) -> anyhow::Result<()> {
     let state = state.lock().await;
-    let Some(keys) = state.key(org_id) else {
+    let Some(keys) = state.state.key(org_id) else {
         return Err(anyhow::anyhow!(
             "failed to find encryption keys in in-memory state"
         ));

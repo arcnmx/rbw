@@ -15,6 +15,8 @@
 
 use anyhow::Context as _;
 use clap::{CommandFactory as _, Parser as _};
+use rbw::cipher::Needle;
+use rbw::pwgen;
 use std::io::Write as _;
 
 mod actions;
@@ -71,8 +73,8 @@ enum Opt {
 
     #[command(about = "Display the password for a given entry")]
     Get {
-        #[arg(help = "Name, URI or UUID of the entry to display", value_parser = commands::parse_needle)]
-        needle: commands::Needle,
+        #[arg(help = "Name, URI or UUID of the entry to display")]
+        needle: Needle,
         #[arg(help = "Username of the entry to display")]
         user: Option<String>,
         #[arg(long, help = "Folder name to search in")]
@@ -102,8 +104,8 @@ enum Opt {
         visible_alias = "totp"
     )]
     Code {
-        #[arg(help = "Name, URI or UUID of the entry to display", value_parser = commands::parse_needle)]
-        needle: commands::Needle,
+        #[arg(help = "Name, URI or UUID of the entry to display")]
+        needle: Needle,
         #[arg(help = "Username of the entry to display")]
         user: Option<String>,
         #[arg(long, help = "Folder name to search in")]
@@ -403,15 +405,15 @@ fn main() {
             diceware,
         } => {
             let ty = if *no_symbols {
-                rbw::pwgen::Type::NoSymbols
+                pwgen::Type::NoSymbols
             } else if *only_numbers {
-                rbw::pwgen::Type::Numbers
+                pwgen::Type::Numbers
             } else if *nonconfusables {
-                rbw::pwgen::Type::NonConfusables
+                pwgen::Type::NonConfusables
             } else if *diceware {
-                rbw::pwgen::Type::Diceware
+                pwgen::Type::Diceware
             } else {
-                rbw::pwgen::Type::AllChars
+                pwgen::Type::AllChars
             };
             commands::generate(
                 name.as_deref(),

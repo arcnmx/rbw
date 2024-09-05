@@ -1,5 +1,7 @@
 use anyhow::{bail, Context as _};
+use rbw::cipher::Cipher;
 use std::io::Read as _;
+use crate::sock::Sock;
 
 pub fn register() -> anyhow::Result<()> {
     simple_action(rbw::protocol::Action::Register)
@@ -26,7 +28,7 @@ pub fn lock() -> anyhow::Result<()> {
 }
 
 pub fn quit() -> anyhow::Result<()> {
-    match crate::sock::Sock::connect() {
+    match Sock::connect() {
         Ok(mut sock) => {
             let pidfile = rbw::dirs::pid_file();
             let mut pid = String::new();
@@ -57,33 +59,71 @@ pub fn quit() -> anyhow::Result<()> {
     }
 }
 
+impl Cipher for Sock {
+    fn decrypt(
+        &mut self,
+        cipherstring: &str,
+        entry_key: Option<&str>,
+        org_id: Option<&str>,
+    ) -> anyhow::Result<String> {
+        self.send(&rbw::protocol::Request {
+            tty: rustix::termios::ttyname(std::io::stdin(), vec![])
+                .ok()
+                .and_then(|p| {
+                    p.to_str().map(std::string::ToString::to_string).ok()
+                }),
+            action: rbw::protocol::Action::Decrypt {
+                cipherstring: cipherstring.to_string(),
+                entry_key: entry_key.map(std::string::ToString::to_string),
+                org_id: org_id.map(std::string::ToString::to_string),
+            },
+        })?;
+
+        let res = self.recv()?;
+        match res {
+            rbw::protocol::Response::Decrypt { plaintext } => Ok(plaintext),
+            rbw::protocol::Response::Error { error } => {
+                Err(anyhow::anyhow!("failed to decrypt: {}", error))
+            }
+            _ => Err(anyhow::anyhow!("unexpected message: {:?}", res)),
+        }
+    }
+
+    fn encrypt(
+        &mut self,
+        plaintext: &str,
+        org_id: Option<&str>,
+    ) -> anyhow::Result<String> {
+        self.send(&rbw::protocol::Request {
+            tty: rustix::termios::ttyname(std::io::stdin(), vec![])
+                .ok()
+                .and_then(|p| {
+                    p.to_str().map(std::string::ToString::to_string).ok()
+                }),
+            action: rbw::protocol::Action::Encrypt {
+                plaintext: plaintext.to_string(),
+                org_id: org_id.map(std::string::ToString::to_string),
+            },
+        })?;
+
+        let res = self.recv()?;
+        match res {
+            rbw::protocol::Response::Encrypt { cipherstring } => Ok(cipherstring),
+            rbw::protocol::Response::Error { error } => {
+                Err(anyhow::anyhow!("failed to encrypt: {}", error))
+            }
+            _ => Err(anyhow::anyhow!("unexpected message: {:?}", res)),
+        }
+    }
+}
+
 pub fn decrypt(
     cipherstring: &str,
     entry_key: Option<&str>,
     org_id: Option<&str>,
 ) -> anyhow::Result<String> {
     let mut sock = connect()?;
-    sock.send(&rbw::protocol::Request {
-        tty: rustix::termios::ttyname(std::io::stdin(), vec![])
-            .ok()
-            .and_then(|p| {
-                p.to_str().map(std::string::ToString::to_string).ok()
-            }),
-        action: rbw::protocol::Action::Decrypt {
-            cipherstring: cipherstring.to_string(),
-            entry_key: entry_key.map(std::string::ToString::to_string),
-            org_id: org_id.map(std::string::ToString::to_string),
-        },
-    })?;
-
-    let res = sock.recv()?;
-    match res {
-        rbw::protocol::Response::Decrypt { plaintext } => Ok(plaintext),
-        rbw::protocol::Response::Error { error } => {
-            Err(anyhow::anyhow!("failed to decrypt: {}", error))
-        }
-        _ => Err(anyhow::anyhow!("unexpected message: {:?}", res)),
-    }
+    sock.decrypt(cipherstring, entry_key, org_id)
 }
 
 pub fn encrypt(
@@ -91,26 +131,7 @@ pub fn encrypt(
     org_id: Option<&str>,
 ) -> anyhow::Result<String> {
     let mut sock = connect()?;
-    sock.send(&rbw::protocol::Request {
-        tty: rustix::termios::ttyname(std::io::stdin(), vec![])
-            .ok()
-            .and_then(|p| {
-                p.to_str().map(std::string::ToString::to_string).ok()
-            }),
-        action: rbw::protocol::Action::Encrypt {
-            plaintext: plaintext.to_string(),
-            org_id: org_id.map(std::string::ToString::to_string),
-        },
-    })?;
-
-    let res = sock.recv()?;
-    match res {
-        rbw::protocol::Response::Encrypt { cipherstring } => Ok(cipherstring),
-        rbw::protocol::Response::Error { error } => {
-            Err(anyhow::anyhow!("failed to encrypt: {}", error))
-        }
-        _ => Err(anyhow::anyhow!("unexpected message: {:?}", res)),
-    }
+    sock.encrypt(plaintext, org_id)
 }
 
 pub fn clipboard_store(text: &str) -> anyhow::Result<()> {
@@ -162,8 +183,8 @@ fn simple_action(action: rbw::protocol::Action) -> anyhow::Result<()> {
     }
 }
 
-fn connect() -> anyhow::Result<crate::sock::Sock> {
-    crate::sock::Sock::connect().with_context(|| {
+fn connect() -> anyhow::Result<Sock> {
+    Sock::connect().with_context(|| {
         let log = rbw::dirs::agent_stderr_file();
         format!(
             "failed to connect to rbw-agent \
@@ -180,5 +201,26 @@ fn wait_for_exit(pid: rustix::process::Pid) {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
+pub struct Agent;
+
+impl Cipher for Agent {
+    fn decrypt(
+        &mut self,
+        cipherstring: &str,
+        entry_key: Option<&str>,
+        org_id: Option<&str>,
+    ) -> anyhow::Result<String> {
+        decrypt(cipherstring, entry_key, org_id)
+    }
+
+    fn encrypt(
+        &mut self,
+        plaintext: &str,
+        org_id: Option<&str>,
+    ) -> anyhow::Result<String> {
+        encrypt(plaintext, org_id)
     }
 }
